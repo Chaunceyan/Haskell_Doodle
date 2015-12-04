@@ -19,6 +19,7 @@ class Pool p where
   get :: Ord k => k -> p k (d t) -> Maybe (d t)
   set :: Ord k => k -> (d t) -> p k (d t) -> p k (d t)
 
+
 run :: (Read t, Doodle d, Show k, Ord k, Enum k, Read k, Pool p, Show (d t), Ord t) => p k (d t) -> IO ()
 run p = prompt "Create a new doodle or participate to an existing one?" (return p) (turn p) >>= run 
 
