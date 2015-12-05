@@ -5,30 +5,18 @@ import Data.Time
 import Data.Time.Format
 import qualified Data.Map.Strict as Map
 
--- Data time to be Ord
-data Time = Time String deriving (Read)
-
-instance Show Time where
-	show (Time time) = show time
-
-instance Eq Time where
-	(==) (Time start) (Time end) = (string2Time start) == (string2Time end)
-
-instance Ord Time where
-	(<=) (Time start) (Time end) = (string2Time start) <= (string2Time end)
-	(>=) (Time start) (Time end) = (string2Time start) >= (string2Time end)
-	(<) (Time start) (Time end) = (string2Time start) < (string2Time end)
-	(>) (Time start) (Time end) = (string2Time start) > (string2Time end)
-
-string2Time :: String -> UTCTime
-string2Time t = readTime defaultTimeLocale "%-d-%-m-%Y %l:%M %p" t :: UTCTime
-
+-- Test with the following Strings
+-- Just (Right ("2015-08-19T12:00+01:00", "2015-09-19T12:00+01:00"))
+-- Just (Right ("2015-09-19T12:00+01:00", "2015-10-19T12:00+01:00"))
+-- Right 1
+-- Just (Left 1)
 -- Data for time slots in Doodle 
 data Slot t = Slot { slot :: (t, t)
-                 , participants :: [String] } 
+                 , participants :: [String] } deriving (Show)
+
 
 instance Eq t => Eq (Slot t) where
-	(==) slot1 slot2 = slot1 == slot2
+	(==) slot1 slot2 = fst (slot slot1) == fst (slot slot2) && snd (slot slot1) == snd (slot slot2)
 
 instance Ord t => Ord (Slot t) where
 	(<=) slot1 slot2 = fst (slot slot1) <= fst (slot slot2)
@@ -46,13 +34,13 @@ instance Doodle MyDoodle where
     remove key doodle = MyDoodle {title = title doodle, slots = removeNth key (slots doodle) }
     toogle name key doodle = MyDoodle {title = title doodle, slots = myToogle name key (slots doodle) } 
 
-instance Show (MyDoodle t) where
+instance (Show t, Ord t, Eq t) => Show (MyDoodle t) where
 	show doodle = myShow doodle   
 
 insertSlot :: (Ord t) =>  [Slot t] -> (t, t) -> [Slot t]
-insertSlot slots (start, end) = if noConflict slots (start,end)
-								then insert (Slot {slot = (start, end), participants = []}) slots
-								else slots
+insertSlot slots (start, end) = -- if noConflict slots (start,end)
+								insert (Slot {slot = (start, end), participants = []}) slots
+								-- else slots
 
 removeNth :: Int -> [Slot t] -> [Slot t]
 removeNth key [] = []
@@ -61,14 +49,14 @@ removeNth key slots = let (xs, ys) = splitAt key slots in xs ++ (tail ys)
 myToogle :: String -> Int -> [Slot t] -> [Slot t]
 myToogle name key slots = let theSlot = slots !! key in replaceNth key ( Slot { slot = slot theSlot, participants = participants theSlot ++ [name] }) slots
 
-myShow :: (MyDoodle Time) -> String
+myShow :: Show t => (MyDoodle t) -> String
 myShow doodle = let
 					myTitle = title doodle 
-					rows = [(\(start, end) -> [start, end]) (slot s) ++ participants s | s <- (slots doodle) ]
-					widths = [ 1 + (length s) + sum [length r | r <- s] | s <- rows]
-					separator = "+" ++ intercalate "-+-" [replicate width '-' | width <- widths] ++ "+"
+					rows = [[myTitle]]++[(\(start, end) -> [show start, show end]) (slot s) ++ participants s | s <- (slots doodle)]
+					widths = [sum [length r + 3 | r <- s] - 1| s <- rows]
+					header = "+" ++ replicate (maximum widths) '-' ++ "+"
 				in 
-					unlines $ [separator] ++ concat [ [fillCols row] ++ [separator] | row <- rows ]
+					unlines $ [header] ++ tail (concat [[separator row header] ++ [fillCols row header] | row <- rows ]) ++ [header]
 
 -- Helper function to replace the Nth element.
 replaceNth :: Int -> a -> [a] -> [a]
@@ -84,9 +72,19 @@ conflictTest :: Ord t => (t, t) -> Slot t -> Bool
 conflictTest (aStart, aEnd) aSlot = let (start, end) = slot aSlot in (aStart < start && aEnd <= end || aStart >= end) 
 
 -- Helper function to put '|' between strings
-fillCols :: [String] -> String
-fillCols xs = "| " ++ intercalate " | " xs ++ " |"
+fillCols :: [String] -> String -> String
+fillCols xs header = let 
+						front = "| " ++ intercalate " | " xs
+						width = length header - length front - 1
+					 in 
+					 	front ++ replicate (width-1) ' ' ++ " |"
 
+separator :: [String] -> String -> String
+separator xs header = let 
+						front = "+-" ++ intercalate "-+-" [replicate (length x) '-'| x <-xs]
+						width = length header - length front - 1
+					 in 
+					 	front ++ replicate (width-1) '-' ++ "-+"
 -- Data and Instance for Pool.
 data MyPool k d = MyPool { keys :: [k]
                      , pairs :: Map.Map k d} deriving Show
@@ -96,8 +94,9 @@ instance Pool MyPool where
 	get key pool = Map.lookup key (pairs pool) 
 	set key doodle pool = MyPool { keys = tail (keys pool), pairs = Map.insert key doodle (pairs pool)  }
 
+
+emptyDoodle :: MyPool Int (MyDoodle String)
+emptyDoodle = MyPool { keys = [1..], pairs = Map.empty }
+
 main :: IO ()
 main = run emptyDoodle
-
-emptyDoodle :: MyPool Int (MyDoodle Time)
-emptyDoodle = MyPool { keys = [1..], pairs = Map.empty }
