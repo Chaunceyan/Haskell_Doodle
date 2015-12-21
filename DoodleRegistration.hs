@@ -17,6 +17,7 @@ main = withSocketsDo $ do
     listen mySocket 5
     loop mySocket channel 0
     
+loop :: Socket -> Chan String -> Int -> IO()    
 loop socket channel number = do
     connection <- Network.Socket.accept socket
     forkIO $ handleConnection connection channel number
