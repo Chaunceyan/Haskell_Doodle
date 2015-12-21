@@ -1,19 +1,31 @@
-import Network
-import Control.Concurrent
+import Network.Socket
 import System.IO
+import Control.Exception
+import Control.Concurrent
+import Control.Concurrent.STM
+import Control.Concurrent.Chan
+import Control.Monad
+import Control.Monad.Fix (fix)
  
-main = withSocketsDo $ do
-    sock <- listenOn $ PortNumber 5002
-    loop sock
- 
-loop sock = do
-   (h,_,_) <- accept sock
-   forkIO $ body h
-   loop sock
-  where
-   body h = do
-       hPutStr h msg
-       hFlush h
-       hClose h
- 
-msg = "HTTP/1.0 200 OK\r\nContent-Length: 5\r\n\r\nPong!\r\n"
+main :: IO ()
+main = withSocketsDo $ do 
+    channel <- newChan
+    -- AF_INET means support Internetwork such as UDP TCP
+    -- Stream means it is a Stream sockets which use TCP and SCTP
+    mySocket <- socket AF_INET Stream defaultProtocol
+    bind mySocket (SockAddrInet 5002 0)
+    listen mySocket 5
+    loop mySocket channel 0
+    
+loop socket channel number = do
+    connection <- Network.Socket.accept socket
+    forkIO $ handleConnection connection channel number
+    loop socket channel $ number + 1
+    
+handleConnection :: (Socket, SockAddr) -> Chan String -> Int -> IO ()
+handleConnection (socket, _) channel number = do
+    handle <- socketToHandle socket ReadWriteMode
+    hSetBuffering handle LineBuffering
+    loginInfo <- hGetLine handle
+    hPutStrLn handle loginInfo
+    hClose handle
