@@ -16,7 +16,7 @@ data Identity = Teacher | Student | Administrator deriving (Show, Eq)
 
 data User = User { login :: String, token :: String, identity :: Identity, subscribe :: [(String, (String, String))] } deriving (Show, Eq)
  
-data Slot = Slot { slot :: (String, String), prefer :: Int } deriving (Show, Eq)
+data Slot = Slot { slot :: (String, String), scores :: Int } deriving (Show, Eq)
 
 data Doodle = Doodle { name :: String, slots :: [Slot] } deriving (Show, Eq)
 
@@ -91,6 +91,9 @@ handleRequest user handle userList doodleList = do  case identity user of
                                                                                                                                                                         token = inputList !! 1, 
                                                                                                                                                                         identity = identity user, 
                                                                                                                                                                         subscribe = subscribe user }] )
+                                                                                    "exam-schedule"     ->  do  doodles <- atomically $ readTVar doodleList
+                                                                                                                --printSchedule handle doodles
+                                                                                                                hPutStrLn handle $ show doodles
                                                          Teacher        ->  do  hPutStrLn handle "Login Success. You can do set-doodle, get-doodle, exam-schedule or change-password."
                                                                                 request <- hGetLine handle
                                                                                 let inputList = splitOn " " request
@@ -99,20 +102,25 @@ handleRequest user handle userList doodleList = do  case identity user of
                                                                                                                 listOf <-  readDoodle handle
                                                                                                                 let slotString = filter ('\t'/=) (filter (' '/=) $ strip listOf)
                                                                                                                 let slots = produceSlots $ Data.String.Utils.split "," $ init slotString
-                                                                                                                atomically $ writeTVar doodleList ([Doodle {name = inputList !! 1, slots = slots}])
-                                                                                                                hPutStrLn handle "Doodle set!"
+                                                                                                                if any (doodleNameTest $ inputList !! 1) doodles
+                                                                                                                then hPutStrLn handle "Doodle Exists!"
+                                                                                                                else do
+                                                                                                                        atomically $ writeTVar doodleList ([Doodle {name = inputList !! 1, slots = slots}])
+                                                                                                                        hPutStrLn handle "Doodle set!"
                                                                                     "get-doodle"        ->  do  doodles <- atomically $ readTVar doodleList
                                                                                                                 let theDoodle = find (doodleNameTest $ inputList !! 1) doodles
                                                                                                                 if theDoodle /= Nothing
                                                                                                                 then do printDoodle handle $ slots $ fromJust theDoodle
                                                                                                                 else do hPutStrLn handle "Wrong doodle name!"
-                                                                                    "exam-schedule"     ->  do  hPutStrLn handle "To be implement!"
                                                                                     "change-password"   ->  do  users <- atomically $ readTVar userList
                                                                                                                 let newUsers = delete user users
                                                                                                                 atomically $ writeTVar userList (newUsers ++ [ User {   login = login user, 
                                                                                                                                                                         token = inputList !! 1, 
                                                                                                                                                                         identity = identity user, 
                                                                                                                                                                         subscribe = subscribe user }])
+                                                                                    "exam-schedule"     ->  do  doodles <- atomically $ readTVar doodleList
+                                                                                                                --printSchedule handle doodles
+                                                                                                                hPutStrLn handle $ show doodles
                                                          Student        ->  do  hPutStrLn handle "Login Success. You can do get-doodle, subscribe, prefer, exam-schedule or change-password."
                                                                                 request <- hGetLine handle
                                                                                 let inputList = splitOn " " request
@@ -127,33 +135,47 @@ handleRequest user handle userList doodleList = do  case identity user of
                                                                                                                 if theDoodle /= Nothing
                                                                                                                 then do users <- atomically $ readTVar userList
                                                                                                                         let newUsers = delete user users
+                                                                                                                        let (start, end) = slot $ (slots $ fromJust theDoodle) !! 0
+                                                                                                                        let name = inputList !! 1
+                                                                                                                        let [theDoodle] = filter (doodleNameTest name) doodles
+                                                                                                                        newSlots <- addScores theDoodle [start, end]
+                                                                                                                        let restDoodles = delete theDoodle doodles
+                                                                                                                        atomically $ writeTVar doodleList $ restDoodles ++ [Doodle {name = name, slots = newSlots}]
                                                                                                                         atomically $ writeTVar userList (newUsers ++ [ User {   login = login user, 
                                                                                                                                                                                 token = token user, 
                                                                                                                                                                                 identity = identity user, 
-                                                                                                                                                                                subscribe = (subscribe user) ++ [(inputList !! 1, slot ((slots $ fromJust theDoodle) !! 0) )]}])
+                                                                                                                                                                                subscribe = (subscribe user) ++ [(inputList !! 1, slot ((slots $ theDoodle) !! 0) )]}])
                                                                                                                 else hPutStrLn handle "Wrong Doodle Name!"
                                                                                     "prefer"            ->  do  doodles <- atomically $ readTVar doodleList
                                                                                                                 let theDoodle = find (doodleNameTest $ inputList !! 1) doodles
                                                                                                                 if theDoodle /= Nothing
                                                                                                                 then if any (slotExistenceTest (Data.String.Utils.split "/" $ inputList !! 2)) $ slots $ fromJust theDoodle
-                                                                                                                     then do hPutStrLn handle $ show user
-                                                                                                                             subscriptionList <- updatePreference handle user (inputList !! 1) $ Data.String.Utils.split "/" (inputList !! 2)
+                                                                                                                     then do 
+                                                                                                                             subscriptionList <- updatePreference handle user doodleList (inputList !! 1) $ Data.String.Utils.split "/" (inputList !! 2)
                                                                                                                              users <- atomically $ readTVar userList
                                                                                                                              let newUsers = delete user users
+                                                                                                                             hPutStrLn handle $ show user
                                                                                                                              atomically $ writeTVar userList (newUsers ++ [ User {   login = login user, 
                                                                                                                                                                                      token = token user, 
                                                                                                                                                                                      identity = identity user, 
                                                                                                                                                                                      subscribe = subscriptionList }] )
                                                                                                                      else hPutStrLn handle "Slot doesn't exist!"
-                                                                                                                else do hPutStrLn handle "Wrong doodle name!"
-                                                                                    "change-password"   -> do   users <- atomically $ readTVar userList
+                                                                                                                else hPutStrLn handle "Wrong doodle name!"
+                                                                                    "change-password"   ->  do  users <- atomically $ readTVar userList
                                                                                                                 let newUsers = delete user users
                                                                                                                 atomically $ writeTVar userList (newUsers ++ [ User {   login = login user, 
                                                                                                                                                                         token = inputList !! 1, 
                                                                                                                                                                         identity = identity user, 
                                                                                                                                                                         subscribe = subscribe user }] )
+                                                                                    "exam-schedule"     ->  do  doodles <- atomically $ readTVar doodleList
+                                                                                                                printSchedules handle doodles
+                                                                                                                hPutStrLn handle $ show doodles
                                                     users <- atomically $ readTVar userList
                                                     let updateUser = fromJust $ find (userLoginTest [login user, token user]) users
+                                                    -- testing block
+                                                    doodles <- atomically $ readTVar doodleList
+                                                    hPutStrLn handle $ show doodles
+                                                    -- testing block ends
                                                     handleRequest updateUser handle userList doodleList
                                                 
 checkUserExist login users = all (userExitTest login) users
@@ -168,7 +190,7 @@ readDoodle handle = do
 
 produceSlots [] = []
 
-produceSlots (slot:slots) = [Slot {slot = (start, end), prefer = 0}] ++ (produceSlots slots)
+produceSlots (slot:slots) = [Slot {slot = (start, end), scores = 0}] ++ (produceSlots slots)
                         where 
                             [start, end] = splitOn "/" slot
                             
@@ -185,10 +207,41 @@ printDoodle handle (doodle:doodles) = do    let (start, end) = slot doodle
                                             
 slotExistenceTest [start, end] mySlot = (start, end) == slot mySlot
 
-updatePreference handle user name [start, end] = do let subscribeList = subscribe user
-                                                    if all (subscriptionListionTest name) subscribeList
-                                                    then do hPutStrLn handle "Not subscribed"
-                                                            return $ subscribe user
-                                                    else return $ (filter (subscriptionListionTest name) subscribeList) ++ [(name, (start, end))]
+updatePreference handle user doodleList name [start, end] = do  let subscribeList = subscribe user
+                                                                if all (subscriptionListTest name) subscribeList
+                                                                then do hPutStrLn handle "Not subscribed"
+                                                                        return $ subscribe user
+                                                                else do 
+                                                                        let (oldName, (oldStart, oldEnd)) = fromJust $ find (subscriptionListNegateTest name) subscribeList 
+                                                                        doodles <- atomically $ readTVar doodleList
+                                                                        let [theDoodle] = filter (doodleNameTest name) doodles
+                                                                        addedSlots <- addScores theDoodle [start, end]
+                                                                        newSlots <- minusScores (Doodle {name = name, slots = addedSlots}) [oldStart, oldEnd]
+                                                                        let restDoodles = delete theDoodle doodles
+                                                                        atomically $ writeTVar doodleList $ restDoodles ++ [Doodle {name = name, slots = newSlots}]
+                                                                        return $ (filter (subscriptionListTest name) subscribeList) ++ [(name, (start, end))]
                                                     
-subscriptionListionTest name (doodleName, slot) = name /= doodleName
+subscriptionListTest name (doodleName, slot) = name /= doodleName
+subscriptionListNegateTest name (doodleName, slot) = name == doodleName
+
+addScores theDoodle [start, end] = do 
+                                    let [theSlot] = filter (slotExistenceTest [start, end]) $ slots theDoodle
+                                    let theRestSlots = delete theSlot $ slots theDoodle
+                                    let newScore = 1 + scores theSlot
+                                    return $ theRestSlots ++ [ Slot { slot = (start, end), scores = newScore }]
+                                    
+minusScores theDoodle [start, end] = do 
+                                    let [theSlot] = filter (slotExistenceTest [start, end]) $ slots theDoodle
+                                    let theRestSlots = delete theSlot $ slots theDoodle
+                                    let newScore = scores theSlot - 1
+                                    return $ theRestSlots ++ [ Slot { slot = (start, end), scores = newScore }]
+                                    
+printSchedules handle (doodle:doodles)
+    | length doodles /= 0 = do  printSchedule handle doodle
+                                printSchedules handle doodles
+    | otherwise           = do  printSchedule handle doodle
+    
+printSchedule handle doodle = do    let (start, end) = slot $ maximumBy (compareSlotPreference) (slots doodle) 
+                                    hPutStrLn handle $ "{"++name doodle++" : "++start++"/"++end++"}" 
+
+compareSlotPreference lSlot rSlot = compare (scores lSlot) (scores rSlot)
