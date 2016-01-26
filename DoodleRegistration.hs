@@ -1,3 +1,39 @@
+-- Chunxiang Yan, 0515432, Chauncey.ycx@gmail.com
+-- Brief intro on how to use the program.
+-- Some flexibility has been taken thus the code does not work exactly as specified.
+-- First run program with Admin account as prarameters. 
+-- For example "./DoodleRegistration admin admin"
+---------------------------------------------------------------------------------------
+-- A testing use-case I used。
+
+-- 1. Start a client session.
+-- 2. Login as administrator.   Command :   "admin admin"
+-- 3. Create a new teacher.     Command :   "add-teacher Chauncey 1234"
+-- 4. Create a new student.     Command :   "add-student Chunxiang 1234"
+----------------------------------------------------------------------
+-- 5. Start a new client session.
+-- 6. Login as a teacher.       Command :   "Chauncey 1234"
+-- 7. Set two doodles.          Command :   set-doodle Cooking [           
+--                                                  1 / 2,
+--                                                  3 / 4
+--                                          ]
+
+--                                          set-doodle Driving [                        
+--                                                  1 / 2,
+--                                                  2 / 3
+--                                          ]
+----------------------------------------------------------------------
+-- 8. Start a new client session.
+-- 9. Login as a student.       Command :   "Chunxiang 1234"
+-- 10. Check current schedule.  Command :   "exam-schedule"
+-- 11. Subscribe Cooking doodle.Command :   "subscribe Cooking"
+-- 12. Prefer a time slot.      Command :   "prefer Cooking 1/2"
+-- 13. Check current schedule again. Command : "exam-schedule"
+----------------------------------------------------------------------
+-- The test case should cover all the required functions by the document.
+-- If further question occurs, please contact me at any time.
+-- FengSibo shi sha bi
+
 import Network.Socket
 import System.IO
 import Control.Exception
